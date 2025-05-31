@@ -8,7 +8,7 @@
 # I used this 3D printed remix of the 19" rack mount https://www.printables.com/model/1216518-improved-1u-rack-mount-wopr-leds-enclosure
 # as it fitted the MAX7219 Digit Displays I was using.
 #  
-# For a controller I used a simple ESP8266 WEMOS board I had handy but any of the supported ESPHOME platforms should work if you change
+# For a controller I used a simple ESP32 dev board I had handy but any of the supported ESPHOME platforms should work if you change
 # the board type and SPI pins.
 #
 # Extensions to the code include the ability to display the time, text message, change the brightness and turn the display on/off via homassistant.
@@ -17,8 +17,10 @@ esphome:
   name: wopr
   friendly_name: WOPR
 
-esp8266:
-  board: d1
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
 
 # Enable logging
 logger:
@@ -50,7 +52,8 @@ select:
     name: Mode
     id: mode
     options:
-     - "WOPR"
+     - "WOPR"    # Wargames
+     - "CM-5"    # Connection Machine
      - "Text"
      - "Date/Time"
      - "Off"
@@ -72,7 +75,7 @@ number:
     step: 1
     min_value: 0
     max_value: 15
-    initial_value: 6
+    initial_value: 5
     restore_value: true
     mode: slider
     optimistic: true
@@ -83,28 +86,30 @@ text:
     id: "message"
     optimistic: true
     min_length: 0
-    max_length: 100
+    max_length: 255
     mode: text
     restore_value: true
 
 spi:
-  clk_pin: D5  # Change this to suit your controller board
-  mosi_pin: D7 # Change this to suit your controller board
+  clk_pin: GPIO18  # Change this to suit your controller board
+  mosi_pin: GPIO23 # Change this to suit your controller board
 
 display:
   - platform: max7219digit
-    cs_pin: D6  # Change this to suit your controller board
+    cs_pin: GPIO15  # Change this to suit your controller board
     num_chips: 12
     id: maxdisplay
     reverse_enable: false
     flip_x: false
+    scroll_delay: 2s
     scroll_mode: stop
-    scroll_dwell: 1s
+    scroll_dwell: 2s
     lambda: |-
       it.invert_on_off(id(inverse).state);
       it.intensity(int(id(brightness).state));
       //--------------------------------------
       if (id(mode).state == "WOPR") {
+        // it.invert_on_off(true);  // Force inversion in WOPR mode
         it.turn_on_off(true);
         it.scroll(false);
         for(int x = 0; x < 96; x++ ) {
@@ -121,6 +126,24 @@ display:
         delay((rand() % 4) * 1000);
       };
       //--------------------------------------
+      if (id(mode).state == "CM-5") {
+        it.invert_on_off(true);  // Force inversion in CM-5 mode
+        it.turn_on_off(true);
+        it.scroll(false);
+        for(int x = 0; x < 96; x++ ) {
+          if (rand() & 1) {
+            for (int y = 0; y < 8; y++) {
+              if (rand() & 4) {
+                it.draw_pixel_at(x, y, COLOR_OFF);
+              } else {
+                it.draw_pixel_at(x, y, COLOR_ON);
+              };
+            };
+          };
+        };
+        // delay((rand() % 3) * 100);
+      };
+      //--------------------------------------
       if (id(mode).state == "Text") {
           it.turn_on_off(true);
           it.scroll(true);
@@ -130,13 +153,13 @@ display:
       if (id(mode).state == "Date/Time") {
           it.turn_on_off(true);
           it.scroll(true);
-          it.strftime(9, 0, id(digit_font), "%D  %H:%M", id(hass_time).now());
+          it.strftime(15, 0, id(digit_font), "%m/%d %I:%M%p", id(hass_time).now());  // 12-hour format with AM/PM
       };
       //--------------------------------------
       if (id(mode).state == "Off") {
           it.scroll(true);
           it.turn_on_off(false);
-      };  
+      };
     update_interval: 1s
 
 time:
@@ -144,6 +167,6 @@ time:
     id: hass_time
 
 font:
-  - file: "pixelmix.ttf"
+  - file: "pixelmix-regular.ttf"
     id: digit_font
     size: 8
